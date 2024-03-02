@@ -2,32 +2,28 @@ import glob
 
 import numpy as np
 from langchain.text_splitter import CharacterTextSplitter
+from langchain_community.embeddings import HuggingFaceEmbeddings
+from langchain_community.llms import HuggingFaceHub
+from langchain_community.vectorstores import Qdrant
 from pdfminer.high_level import extract_text
 from qdrant_client import QdrantClient, models
 from sentence_transformers import SentenceTransformer
 
+from rag.chatbot import Chatbot
 
-def create_collection(client, collection_name, encoder):
-    size = encoder.get_sentence_embedding_dimension()
-    client.recreate_collection(
-        collection_name=collection_name,
-        vectors_config=models.VectorParams(
-            size=size,  # Vector size is defined by used model
-            distance=models.Distance.COSINE,
-        ),
+
+def create_collection():
+    client = QdrantClient(url="http://localhost:6333")
+    collection_name = "potter20"
+    model_name = "sentence-transformers/all-MiniLM-L6-v2"
+    model_kwargs = {'device': 'cpu'}
+    encode_kwargs = {'normalize_embeddings': False}
+    embedding_function = HuggingFaceEmbeddings(
+        model_name=model_name,
+        model_kwargs=model_kwargs,
+        encode_kwargs=encode_kwargs
     )
-
-    client.upsert(
-        collection_name=collection_name,
-        points=[
-            models.PointStruct(
-                id=i,
-                vector=np.random.rand(size).tolist(),
-            )
-            for i in range(100)
-        ],
-    )
-
+    db = Qdrant(client, collection_name, embedding_function)
 
 def get_chunks(text):
     text_splitter = CharacterTextSplitter(
@@ -48,7 +44,7 @@ def extract_text_from_pdf(pdf_path):
 
 if __name__ == '__main__':
     datadir='data/potter20/*'
-
+    # https://github.com/lucifertrj/Awesome-RAG/blob/main/apps/Langchain_Streaming/ingest.py
     client = QdrantClient(url="http://localhost:6333")
     collection_name = 'potter20'
     encoder = SentenceTransformer("all-MiniLM-L6-v2")
