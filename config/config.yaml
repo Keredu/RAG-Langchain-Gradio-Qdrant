@@ -3,9 +3,11 @@ embeddings:
   model: text-embedding-3-small
   size: 1536
 collection:
-  name: test_questions
+  name: harry-potter
   sources:
-    - datadir: data/example/questions.json
-      type: json
-      name: questions
-    
+    # - datadir: data/example/questions.json
+    #   type: json
+    #   name: questions
+    - datadir: "data/Harry Potter/*"
+      type: pdf
+      name: Harry Potter

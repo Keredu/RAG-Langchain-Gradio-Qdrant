@@ -1,6 +1,5 @@
 .venv
 __pycache__
 data/PMC
-data/Harry Potter
 qdrant_storage
 .env

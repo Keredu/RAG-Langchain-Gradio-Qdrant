@@ -1,15 +1,16 @@
-import json
 import glob
+import hashlib
+import json
+import os
 
+import openai
 from langchain.text_splitter import CharacterTextSplitter
 from pdfminer.high_level import extract_text
 from qdrant_client import QdrantClient, models
+from qdrant_client.http.models import PointStruct
+
 from rag.enums import Datatype
 from rag.logger import get_logger
-import random
-import openai
-import os
-from qdrant_client.http.models import PointStruct
 
 logger = get_logger(__name__)
 
@@ -21,23 +22,23 @@ def get_chunks(text):
         chunk_overlap=200,
         length_function=len
     )
-    chunks = text_splitter.split_text(text)
-    return chunks
+    texts = [t for t in text_splitter.split_text(text)][:10]
+    return texts
 
 def extract_text_from_pdf(pdf_path):
     text = extract_text(pdf_path)
     return text
 
-def upsert_json(qdrant_client, openai_client, collection_name, texts, source_name, embeddings_conf):
-    """Inserts data into the collection using OpenAI API."""
+def upsert_texts(qdrant_client, openai_client, collection_name, texts, source_name, embeddings_conf):
+    """Inserts texts into the collection using OpenAI API."""
 
     result = openai_client.embeddings.create(input=texts, 
-                                             model=embeddings_conf['embedding_model'])
+                                             model=embeddings_conf['model'])
     points = []
-    for (data, text) in enumerate(zip(result.data, texts)):
-        point = PointStruct(id=random.random(9999999),
+    for data, text in zip(result.data, texts):
+        point = PointStruct(id=int(hashlib.sha256(text.encode('utf-8')).hexdigest(), 16) % 10**8,
                             vector=data.embedding,
-                            payload={"text": text,
+                            payload={"page_content": text,
                                      "source": source_name})
         points.append(point)
     qdrant_client.upsert(collection_name, points)
@@ -48,16 +49,23 @@ def populate_collection(qdrant_client, collection_name, openai_client, datadir, 
         for path in glob.glob(datadir):
             with open(path, "r") as fp:
                 texts = json.load(fp)
-            upsert_json(qdrant_client=qdrant_client,
-                        openai_client=openai_client,
-                        collection_name=collection_name,
-                        texts=texts,
-                        source_name=source_name,
-                        embeddings_conf=embeddings_conf)
+            upsert_texts(qdrant_client=qdrant_client,
+                         openai_client=openai_client,
+                         collection_name=collection_name,
+                         texts=texts,
+                         source_name=source_name,
+                         embeddings_conf=embeddings_conf)
 
     elif datatype == Datatype.PDF.value:
-        pass
-
+        for path in glob.glob(datadir):
+            text = extract_text_from_pdf(path)
+            texts = get_chunks(text)
+            upsert_texts(qdrant_client=qdrant_client,
+                         openai_client=openai_client,
+                         collection_name=collection_name,
+                         texts=texts,
+                         source_name=source_name,
+                         embeddings_conf=embeddings_conf)
     else:
         raise ValueError(f"Datatype {datatype} not supported")
 
@@ -99,7 +107,7 @@ def load_collection(collection_conf, embeddings_conf):
 
     qdrant_client = QdrantClient(url="http://localhost:6333")
     qdrant_client.get_collections()
-    if collection_name in [c.name for c in qdrant_client.get_collections().collections]:
+    if False: #collection_name in [c.name for c in qdrant_client.get_collections().collections]:
         logger.info(f"Collection {collection_name} already exists. Skipping creation.")
     else:
         qdrant_client.recreate_collection(

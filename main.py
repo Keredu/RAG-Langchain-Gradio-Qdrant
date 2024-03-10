@@ -6,8 +6,8 @@ from langchain_openai.embeddings import OpenAIEmbeddings
 from langchain_community.vectorstores import Qdrant
 from langchain.chains import RetrievalQA
 from langchain_openai import OpenAI
-import json
 from rag.qdrant import load_collection
+from langchain import hub
 
 
 if __name__ == '__main__':
@@ -32,21 +32,38 @@ if __name__ == '__main__':
                        collection_conf['name'],
                        embeddings=OpenAIEmbeddings()).as_retriever()
     llm = OpenAI()
+    prompt = hub.pull("rlm/rag-prompt", api_url="https://api.hub.langchain.com")
     qa = RetrievalQA.from_chain_type(
         llm=llm, 
         chain_type="stuff", 
         retriever=retriever,
         return_source_documents=False,
+        chain_type_kwargs={"prompt": prompt,
+                           "verbose": True}
     )
 
-    with open("data/questions.json", "r") as f:
-        questions = json.load(f)[:5]
+    question = "3 characters with a surname longer than 5 characters"
+    question = "Who is Harry Potter?"
 
-    for question in questions:
-        try:
+    try:
+        if False:
+            # Task identified as complex; modify to actually use RAG for retrieval
+            d = qa.invoke(question)  # Use RAG to retrieve relevant documents
+            response = client.chat.completions.create(
+            model="gpt-4-turbo-preview",
+            messages=[
+                {"role": "system","content": "You are a helpful assistant who takes the output from a RAG and generates python code to be executed directly without any changes with ."},
+                {"role": "user", "content": f"Given the question {question} and this answer from RAG: {d}\n\n Generate python code to answer the question. The python code will be executed directly without any changes with the following statement: result = eval(python_code). Hence, answer only with the code, nothing else."},
+            ]
+            )
+            
+            # Execute the dynamically generated code
+            result = eval(None)
+            print(f'> {question}\n{result}', end="\n\n")
+        else:
+            # Task is not complex; proceed with RAG as usual
             d = qa.invoke(question)
             q, r = d['query'], d['result']
-            print(f'> {q}\n{r}', end="\n\n")
-        except Exception as e:
-            print(f"Error: {e}", end="\n\n")
-            continue
+            print(f'> {q}\n{r}')
+    except Exception as e:
+        logger.error(f"Error: {e}")
