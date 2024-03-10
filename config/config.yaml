@@ -1,0 +1,11 @@
+env_file: .env
+embeddings:
+  model: text-embedding-3-small
+  size: 1536
+collection:
+  name: test_questions
+  sources:
+    - datadir: data/example/questions.json
+      type: json
+      name: questions
+    

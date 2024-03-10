@@ -9,7 +9,7 @@ qdrant:
 		echo "Qdrant image pulled."; \
 		echo "Starting Qdrant container..."; \
 		docker run -d -p 6333:6333 -p 6334:6334 \
-			-v $(pwd)/qdrant_storage:/qdrant/storage:z \
+			-v $$(pwd)/qdrant_storage:/qdrant/storage:z \
 			--name qdrant_container \
 			qdrant/qdrant; \
 		echo "Qdrant container started."; \

@@ -1,42 +1,52 @@
-from rag.chatbot import Chatbot
-from langchain_community.vectorstores import Qdrant
 from qdrant_client import QdrantClient
-from langchain_community.embeddings import HuggingFaceEmbeddings
-from langchain_community.llms import HuggingFaceHub
+from rag.logger import get_logger
+from rag.conf import load_conf
+
+from langchain_openai.embeddings import OpenAIEmbeddings
+from langchain_community.vectorstores import Qdrant
+from langchain.chains import RetrievalQA
+from langchain_openai import OpenAI
+import json
+from rag.qdrant import load_collection
 
 
-def retrieve_documents(client, collection_name, query, top_k=5):
-    # This is a simplified example. You'll need to adjust it according to your collection schema.
-    # Perform a search query in your collection
-    search_results = client.search(
-        collection_name=collection_name,
-        query=query,
-        top=top_k
-    )
-    documents = [result.payload for result in search_results["hits"]]
-    return documents
+if __name__ == '__main__':
+    logger = get_logger(__name__)
+    logger.info("Loading configuration")
+    conf = load_conf()
+    collection_conf = conf.get("collection", None)
+    if collection_conf is None:
+        logger.critical("Collection configuration not found in configuration")
+        exit(1)
 
-if __name__ == "__main__":
-    # chatbot = Chatbot()
-    # chatbot.run()
-    # Extract documents from the search results
+    embeddings_conf = conf.get("embeddings", None)
+    if embeddings_conf is None:
+        logger.critical("Embeddings configuration not found in configuration")
+        exit(1)
+
+    load_collection(collection_conf=collection_conf,
+                    embeddings_conf=embeddings_conf)
 
     client = QdrantClient(url="http://localhost:6333")
-    collection_name = "potter20"
-    model_name = "sentence-transformers/all-MiniLM-L6-v2"
-    model_kwargs = {'device': 'cpu'}
-    encode_kwargs = {'normalize_embeddings': False}
-    embedding_function = HuggingFaceEmbeddings(
-        model_name=model_name,
-        model_kwargs=model_kwargs,
-        encode_kwargs=encode_kwargs
+    retriever = Qdrant(client,
+                       collection_conf['name'],
+                       embeddings=OpenAIEmbeddings()).as_retriever()
+    llm = OpenAI()
+    qa = RetrievalQA.from_chain_type(
+        llm=llm, 
+        chain_type="stuff", 
+        retriever=retriever,
+        return_source_documents=False,
     )
-    db = Qdrant(client, collection_name, embedding_function)
-    # Create the RAG model
 
-    retriever = db.as_retriever()
+    with open("data/questions.json", "r") as f:
+        questions = json.load(f)[:5]
 
-    query = "Describe Harry Potter's first Quidditch match."
-    relevant_documents = retriever.get_relevant_documents(query)
-
-    print(relevant_documents)
+    for question in questions:
+        try:
+            d = qa.invoke(question)
+            q, r = d['query'], d['result']
+            print(f'> {q}\n{r}', end="\n\n")
+        except Exception as e:
+            print(f"Error: {e}", end="\n\n")
+            continue
